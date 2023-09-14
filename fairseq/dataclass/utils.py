@@ -394,9 +394,9 @@ def convert_namespace_to_omegaconf(args: Namespace) -> DictConfig:
 
     GlobalHydra.instance().clear()
 
-    with initialize(config_path=config_path):
+    with initialize(config_path=config_path, version_base="1.1"):
         try:
-            composed_cfg = compose("config", overrides=overrides, strict=False)
+            composed_cfg = compose("config", overrides=overrides)
         except:
             logger.error("Error when composing. Overrides: " + str(overrides))
             raise

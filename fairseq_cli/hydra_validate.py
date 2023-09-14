@@ -31,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger("fairseq_cli.validate")
 
 
-@hydra.main(config_path=os.path.join("..", "fairseq", "config"), config_name="config")
+@hydra.main(config_path=os.path.join("..", "fairseq", "config"), config_name="config_base")
 def hydra_main(cfg: FairseqConfig) -> float:
     return _hydra_main(cfg)
 
