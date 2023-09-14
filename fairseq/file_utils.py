@@ -19,6 +19,7 @@ import tempfile
 from functools import partial, wraps
 from hashlib import sha256
 from io import open
+from .utils import strtobool
 
 
 try:
@@ -47,6 +48,9 @@ except (AttributeError, ImportError):
 
 CONFIG_NAME = "config.json"
 WEIGHTS_NAME = "pytorch_model.bin"
+
+PYTORCH_FAIRSEQ_OFFLINE = strtobool(os.getenv("PYTORCH_FAIRSEQ_OFFLINE", "0"))
+PYTORCH_FAIRSEQ_NO_CACHE_ETAG = strtobool(os.getenv("PYTORCH_FAIRSEQ_NO_CACHE_ETAG", "0"))
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -105,7 +109,7 @@ def url_to_filename(url, etag=None):
     url_hash = sha256(url_bytes)
     filename = url_hash.hexdigest()
 
-    if etag:
+    if etag and not PYTORCH_FAIRSEQ_NO_CACHE_ETAG:
         etag_bytes = etag.encode("utf-8")
         etag_hash = sha256(etag_bytes)
         filename += "." + etag_hash.hexdigest()
@@ -134,7 +138,7 @@ def filename_to_url(filename, cache_dir=None):
     with open(meta_path, encoding="utf-8") as meta_file:
         metadata = json.load(meta_file)
     url = metadata["url"]
-    etag = metadata["etag"]
+    etag = metadata["etag"] if not PYTORCH_FAIRSEQ_NO_CACHE_ETAG else None
 
     return url, etag
 
@@ -225,6 +229,12 @@ def s3_request(func):
 @s3_request
 def s3_etag(url):
     """Check ETag on S3 object."""
+    if PYTORCH_FAIRSEQ_NO_CACHE_ETAG:
+        return None
+    
+    if PYTORCH_FAIRSEQ_OFFLINE:
+        raise RuntimeError(f"Fairseq is in offline mode. Cannot reach {url}")
+
     import boto3
 
     s3_resource = boto3.resource("s3")
@@ -235,6 +245,9 @@ def s3_etag(url):
 
 @s3_request
 def s3_get(url, temp_file):
+    if PYTORCH_FAIRSEQ_OFFLINE:
+        raise RuntimeError(f"Fairseq is in offline mode. Cannot reach {url}.")
+    
     """Pull a file directly from S3."""
     import boto3
 
@@ -245,6 +258,9 @@ def s3_get(url, temp_file):
 
 def request_wrap_timeout(func, url):
     import requests
+
+    if PYTORCH_FAIRSEQ_OFFLINE:
+        raise RuntimeError(f"Fairseq is in offline mode. Cannot reach {url}.")
 
     for attempt, timeout in enumerate([10, 20, 40, 60, 60]):
         try:
@@ -262,6 +278,9 @@ def request_wrap_timeout(func, url):
 
 
 def http_get(url, temp_file):
+    if PYTORCH_FAIRSEQ_OFFLINE:
+        raise RuntimeError(f"Fairseq is in offline mode. Cannot reach {url}.")
+    
     import requests
     from tqdm import tqdm
 
@@ -289,8 +308,11 @@ def get_from_cache(url, cache_dir=None):
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
 
+    # If offline mode is enabled or ETag is disabled, skip the request
+    if PYTORCH_FAIRSEQ_NO_CACHE_ETAG or PYTORCH_FAIRSEQ_OFFLINE:
+        etag = None
     # Get eTag to add to filename, if it exists.
-    if url.startswith("s3://"):
+    elif url.startswith("s3://"):
         etag = s3_etag(url)
     else:
         try:

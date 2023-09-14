@@ -810,6 +810,15 @@ def eval_bool(x, default=False):
         return bool(eval(x))
     except TypeError:
         return default
+    
+def strtobool(val):
+    val = val.lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return True
+    elif val in ('n', 'no', 'f', 'false', 'off', '0', ''):
+        return False
+    else:
+        raise ValueError("invalid truth value %r" % (val,))
 
 
 def reset_logging():
